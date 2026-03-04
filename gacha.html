@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Vibe Coding - 1人1抽限制版</title>
+    <style>
+        /* 继承之前的漫画样式 */
+        :root { --m-black: #000; --m-white: #fff; }
+        body { margin: 0; background: #eee; background-image: radial-gradient(#ccc 1px, transparent 0); background-size: 20px 20px; font-family: 'PingFang SC', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+        /* 登录弹窗 */
+        #login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+        .login-box { background: #fff; padding: 40px; border: 6px solid #000; transform: rotate(-1deg); text-align: center; box-shadow: 15px 15px 0 #ff4757; max-width: 400px; }
+        .login-box input { border: 4px solid #000; padding: 12px; font-size: 1.5rem; width: 80%; outline: none; margin-bottom: 20px; font-weight: bold; }
+        .login-box button { background: #000; color: #fff; border: none; padding: 12px 40px; font-size: 1.2rem; cursor: pointer; font-weight: bold; }
+
+        /* 状态条 */
+        #status-bar { position: fixed; bottom: 50px; background: #000; color: #fff; padding: 15px 50px; font-size: 1.5rem; font-weight: bold; transform: skew(-10deg); border: 4px solid #fff; opacity: 0; transition: 0.5s; z-index: 1100; text-align: center; }
+        #status-bar.show { opacity: 1; transform: skew(-10deg) translateY(-20px); }
+
+        /* 极速边缘感应 (15% 宽度) */
+        .edge-trigger { position: fixed; top: 0; height: 100%; width: 15%; z-index: 1000; }
+        #l-trigger { left: 0; cursor: w-resize; }
+        #r-trigger { right: 0; cursor: e-resize; }
+
+        /* 卡牌布局 */
+        #deck-container { display: flex; gap: 30px; padding: 100px 20vw; overflow-x: hidden; width: 100%; align-items: center; }
+        .card-wrapper { position: relative; perspective: 1000px; min-width: 190px; height: 280px; }
+        .card { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.6s cubic-bezier(0.17, 0.88, 0.32, 1.2); cursor: pointer; z-index: 10; }
+        .card.flipped { transform: rotateY(180deg); }
+        .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border: 5px solid #000; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fff; }
+        .card-back { background: #000; }
+        .card-front { transform: rotateY(180deg); text-align: center; }
+        
+        @keyframes burst { 0% { transform: scale(0); opacity: 0; } 50% { opacity: 1; } 100% { transform: scale(1.5) rotate(15deg); opacity: 0; } }
+        .impact-layer { position: absolute; top: 50%; left: 50%; width: 450px; height: 450px; transform: translate(-50%, -50%); z-index: 1; pointer-events: none; display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="login-overlay">
+        <div class="login-box">
+            <h1 style="margin-top:0; font-size: 2.5rem;">WARNING!</h1>
+            <p style="font-weight: bold;">请输入你的花名，每人仅限抽选一次</p>
+            <input type="text" id="nickname-input" placeholder="输入昵称..." autofocus>
+            <br>
+            <button onclick="enterApp()">确认进入</button>
+        </div>
+    </div>
+
+    <div id="l-trigger" class="edge-trigger"></div>
+    <div id="r-trigger" class="edge-trigger"></div>
+
+    <div id="deck-container"></div>
+    <div id="status-bar"></div>
+
+    <script>
+        let currentUser = "";
+        let scrollInterval = null;
+        let cardData = []; 
+        
+        // 模拟数据生成
+        function generateMockData() {
+            for(let i=1; i<=24; i++) {
+                cardData.push({ id: `card_${i}`, num: i, person: `奖项/成员 ${i}` });
+            }
+            cardData.sort(() => Math.random() - 0.5);
+        }
+
+        // 检查用户是否已经抽过
+        function checkHasDrawn(name) {
+            // 后续这里改为调用飞书 API 查询数据库
+            const drawnUsers = JSON.parse(localStorage.getItem('vibe_drawn_users') || '[]');
+            return drawnUsers.includes(name);
+        }
+
+        function enterApp() {
+            const val = document.getElementById('nickname-input').value.trim();
+            if(!val) return alert("请输入昵称！");
+            
+            if(checkHasDrawn(val)) {
+                alert(`【${val}】你已经抽过卡了！\n想要重抽？请找主持人刷新后台数据。`);
+                return;
+            }
+
+            currentUser = val;
+            document.getElementById('login-overlay').style.display = 'none';
+            renderCards();
+        }
+
+        function renderCards() {
+            const container = document.getElementById('deck-container');
+            container.innerHTML = cardData.map(card => `
+                <div class="card-wrapper">
+                    <div class="impact-layer">
+                        <svg viewBox="0 0 200 200" style="animation: burst 0.5s ease-out forwards;">
+                            <g fill="black"><path d="M100,100 L110,10 L90,10 Z M100,100 L190,50 L180,40 Z M100,100 L190,100 L190,110 Z M100,100 L150,190 L140,180 Z M100,100 L100,190 L80,190 Z M100,100 L20,150 L10,140 Z M100,100 L10,100 L10,90 Z M100,100 L50,10 L40,20 Z"/></g>
+                        </svg>
+                    </div>
+                    <div class="card" onclick="flipCard(this, '${card.id}', ${card.num}, '${card.person}')">
+                        <div class="card-face card-back">
+                            <svg viewBox="0 0 190 280" fill="none">
+                                <rect width="190" height="280" fill="black"/>
+                                <text x="50" y="140" fill="white" font-weight="bold">CLICK TO DRAW</text>
+                            </svg>
+                        </div>
+                        <div class="card-face card-front">
+                            <p style="font-size:3rem; font-weight:900; margin:0;">No.${card.num}</p>
+                            <p style="font-size:1.2rem; font-weight:bold; border-top:3px solid #000; margin-top:10px;">${card.person}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function flipCard(el, id, num, person) {
+            if(el.classList.contains('flipped')) return;
+
+            // 再次拦截，防止绕过登录界面
+            if(checkHasDrawn(currentUser)) {
+                alert("你已经抽过卡了，请联系主持人！");
+                return;
+            }
+
+            // 模拟记录已抽卡用户 (后续对接飞书 Bitable)
+            const drawnUsers = JSON.parse(localStorage.getItem('vibe_drawn_users') || '[]');
+            drawnUsers.push(currentUser);
+            localStorage.setItem('vibe_drawn_users', JSON.stringify(drawnUsers));
+
+            // 执行特效
+            el.previousElementSibling.style.display = 'block';
+            el.classList.add('flipped');
+
+            const bar = document.getElementById('status-bar');
+            bar.innerHTML = `GOTCHA! <strong>${currentUser}</strong><br>你抽到了: <span style="color:#ff4757">No.${num}</span>`;
+            bar.classList.add('show');
+        }
+
+        // 极速滚动
+        const container = document.getElementById('deck-container');
+        document.getElementById('l-trigger').onmouseenter = () => scrollInterval = setInterval(() => container.scrollLeft -= 120, 16);
+        document.getElementById('r-trigger').onmouseenter = () => scrollInterval = setInterval(() => container.scrollLeft += 120, 16);
+        document.querySelectorAll('.edge-trigger').forEach(e => e.onmouseleave = () => clearInterval(scrollInterval));
+
+        generateMockData();
+    </script>
+</body>
+</html>
